@@ -5,6 +5,6 @@ splash:
   file: assets/no-image.png
 icon:
   file: assets/no-icon.png
-version: v0.0.1
+version: v0.0.2
 category: game
 url: https://github.com/gadgetoid/32blit-dots
