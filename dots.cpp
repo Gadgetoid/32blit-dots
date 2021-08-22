@@ -8,10 +8,14 @@ constexpr Pen COLOUR_DOT_NONE(0, 0, 0);
 constexpr Pen COLOUR_LINE(0, 0, 0);
 const uint8_t P_MAX_AGE = 255;
 
+const uint8_t dot_radius = 12;
+
 constexpr Size game_grid(6, 6);
 constexpr Size game_bounds(220, 220);
 constexpr Vec2 dot_spacing = Vec2(game_bounds.w / game_grid.w, game_bounds.h / game_grid.h);
 Vec2 global_dot_offset;
+
+uint32_t score;
 
 Pen DOT_COLOURS[5] = {
     Pen(0x99, 0x00, 0xcc), // Purple
@@ -21,18 +25,35 @@ Pen DOT_COLOURS[5] = {
     Pen(0xff, 0x99, 0x33)  // Yellow
 };
 
+Pen DOT_COLOURS_SELECTED[5] = {
+    Pen(0xBB, 0x22, 0xEE), // Purple
+    Pen(0x22, 0xEE, 0xff), // Blue
+    Pen(0x22, 0xBB, 0xBB), // Green
+    Pen(0xff, 0x55, 0x55), // Red
+    Pen(0xff, 0xBB, 0x55)  // Yellow
+};
+
 struct Dot {
     Vec2 position;
     Pen colour;
+    Pen selected_colour;
     bool explode;
 
     Dot (Vec2 position) : position(position) {
         explode = false;
-        colour = DOT_COLOURS[blit::random() % 5];
+        uint8_t c = blit::random() % 5;
+        colour = DOT_COLOURS[c];
+        selected_colour = DOT_COLOURS_SELECTED[c];
     };
 
     Point grid_location() {
-        return position / dot_spacing;
+        Vec2 loc = position / dot_spacing;
+        return Point(floor(loc.x), floor(loc.y));
+    }
+
+    int grid_offset() {
+        Point loc = grid_location();
+        return loc.x + loc.y * game_grid.w;
     }
 
     bool in(std::vector<Dot *> chain) {
@@ -41,6 +62,14 @@ struct Dot {
         }
         return false;
     }
+    
+	const bool operator < (const Dot& rhs) const {
+        Point a = position / dot_spacing;
+        Point b = rhs.position / dot_spacing;
+        uint32_t offset_a = a.x + a.y * game_grid.w;
+        uint32_t offset_b = b.x + b.y * game_grid.w;
+        return offset_a > offset_b;
+    };
 };
 
 struct SpaceDust {
@@ -82,7 +111,7 @@ void init() {
 
     global_dot_offset = Vec2(
         (screen.bounds.w - game_bounds.w) / 2,
-        (screen.bounds.h - game_bounds.h) / 2
+        (screen.bounds.h - game_bounds.h)
     ) + (dot_spacing / 2.0f);
 
     for(auto y = 0u; y < game_grid.h; y++) {
@@ -106,44 +135,67 @@ void render(uint32_t time) {
     for(auto &dot : dots) {
         if(dot.explode) continue;
     
-        Pen c = dot.colour;
         Vec2 dot_origin = global_dot_offset + dot.position;
     
-        if(Point(dot.position) == selected) {
-            c = Pen(
-                (uint8_t)std::min(255.0f, c.r * 1.2f),
-                (uint8_t)std::min(255.0f, c.g * 1.2f),
-                (uint8_t)std::min(255.0f, c.b * 1.2f)
-            );
+        if(dot.grid_location() == selected || dot.in(chain)) {
+            screen.pen = dot.selected_colour;
+        } else {
+            screen.pen = dot.colour;
         }
-        screen.pen = c;
-        screen.circle(dot_origin, 12);
+        screen.circle(dot_origin, dot_radius);
     };
 
-    Point last(-1, -1);
-    for(auto &dot : chain) {
-        Vec2 dot_origin = global_dot_offset + dot->position; 
+    if(chain.size() > 0) {
+        Dot *last = nullptr;
+        Pen chain_colour = chain.front()->selected_colour;
+        for(auto &dot : chain) {
+            Vec2 dot_origin = global_dot_offset + dot->position; 
 
-        screen.pen = COLOUR_LINE;
-        screen.circle(dot_origin, 5);
+            //screen.pen = COLOUR_LINE;
+            //screen.circle(dot_origin, 5);
 
-        if(last != Point(-1, -1)) {
-            screen.pen = COLOUR_LINE;
-            screen.line(last, dot->position);
-            last = dot->position;
-        }
-    };
+            if(last) {
+                screen.pen = chain_colour;
+                Rect link(0, 0, 0, 0);
+                if(last->position.y == dot->position.y) {
+                    link.x = std::min(last->position.x, dot->position.x);
+                    link.w = abs(last->position.x - dot->position.x);
+                    link.h = 2 * dot_radius + 1; // Wtf?
+                    link.y = last->position.y - dot_radius;
+
+                }
+                if(last->position.x == dot->position.x) {
+                    link.y = std::min(last->position.y, dot->position.y);
+                    link.h = abs(last->position.y - dot->position.y);
+                    link.w = 2 * dot_radius + 1;
+                    link.x = last->position.x - dot_radius;
+                }
+                link.x += global_dot_offset.x;
+                link.y += global_dot_offset.y;
+                screen.rectangle(link);
+                last = dot;
+            }
+
+            last = dot;
+        };
+    }
 
     for(auto &p: particles){
         screen.pen = p.color;
         screen.alpha = P_MAX_AGE - (uint8_t)p.age;
         p.age += 2;
+        p.vel += Vec2(0.0f, 0.098f);
         p.pos += p.vel;
         screen.circle(p.pos + global_dot_offset, 3);
     }
     screen.alpha = 255;
 
     particles.erase(std::remove_if(particles.begin(), particles.end(), [](SpaceDust particle) { return (particle.age >= P_MAX_AGE); }), particles.end());
+
+    screen.pen = Pen(50, 50, 50);
+    screen.rectangle(Rect(0, 0, screen.bounds.w, 20));
+    screen.pen = Pen(200, 200, 200);
+    screen.text(std::to_string(score), minimal_font, Point(global_dot_offset.x - dot_radius, 5));
 }
 
 void explode(Vec2 origin, Pen colour, float factor=1.0f) {
@@ -157,40 +209,53 @@ void explode(Vec2 origin, Pen colour, float factor=1.0f) {
         r  = r * pi / 180.0f;
 
         particles.push_back(SpaceDust(
-                origin,
-                Vec2(cosf(r) * v, sinf(r) * v),
-                colour
+            origin,
+            Vec2(cosf(r) * v, sinf(r) * v),
+            colour
         ));
     }
 }
 
 void explode_chain() {
+    uint8_t column_counts[game_grid.w] = {0, 0, 0, 0, 0, 0};
+
+    if(chain.size() < 2) {
+        chain.clear();
+        return;
+    };
+
     for(auto &dot : chain) {
         dot->explode = true;
         explode(dot->position, dot->colour);
+        column_counts[dot->grid_location().x] += 1;
     }
+
+    dots.erase(std::remove_if(dots.begin(), dots.end(), [](Dot dot){return dot.explode;}), dots.end());
+
+    for(auto x = 0u; x < game_grid.w; x++) {
+        uint8_t count = column_counts[x];
+        while(count--) {
+            dots.push_back(Dot(Vec2(x, -1 - count) * dot_spacing));
+        }
+    }
+
+	std::sort(dots.begin(), dots.end());
+
+    score += chain.size() * chain.size() * chain.size();
+
+    chain.clear();
 }
 
 void update(uint32_t time) {
     Point movement(0, 0);
     static Point last_movement(0, 0);
 
-    uint8_t column_counts[game_grid.w] = {0, 0, 0, 0, 0, 0};
-
     for(auto &dot : dots) {
         Point position = dot.grid_location();
         if(position.y == game_grid.h - 1) continue; // Easy way to collide with the "floor"
         auto dot_below = dot_at(position + Point(0, 1));
         if(!dot_below) {
-            dot.position.y += dot_spacing.y / 12.0f;
-        }
-        column_counts[position.x] += 1;
-    }
-
-    for(auto x = 0u; x < game_grid.w; x++) {
-        uint8_t count = column_counts[x];
-        if(count < game_grid.h - 1 && !dot_at(Point(x, 0)) && !dot_at(Point(x, 0))) {
-            dots.push_back(Dot(Vec2(x, -1) * dot_spacing));
+            dot.position.y += dot_spacing.y / float(dot_radius);
         }
     }
 
@@ -235,12 +300,7 @@ void update(uint32_t time) {
             selected -= movement;
         }
     } else {
-        if(chain.size() > 1) {
-            // DOTS GO BOOM
-            explode_chain();
-            dots.erase(std::remove_if(dots.begin(), dots.end(), [](Dot dot){return dot.explode;}), dots.end());
-        }
-        chain.clear();
+        explode_chain();
     }
 
     last_movement = movement;

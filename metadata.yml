@@ -1,10 +1,10 @@
-title: game title
-description: game description
-author: you
+title: Dots
+description: Connect the dots
+author: Gadgetoid
 splash:
   file: assets/no-image.png
 icon:
   file: assets/no-icon.png
 version: v0.0.1
-category: game # game, demo, utility, ...
-url: https://github.com/32blit/32blit-boilerplate
+category: game
+url: https://github.com/gadgetoid/32blit-dots
