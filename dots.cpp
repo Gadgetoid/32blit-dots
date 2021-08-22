@@ -1,4 +1,6 @@
+#include <cinttypes>
 #include "dots.hpp"
+#include "random.hpp"
 
 using namespace blit;
 
@@ -50,7 +52,7 @@ struct Dot {
     Dot (Vec2 p) {
         position = p;
         explode = false;
-        uint8_t c = blit::random() % 5;
+        uint8_t c = get_random_int() % 5;
         colour = DOT_COLOURS[c];
         selected_colour = DOT_COLOURS_SELECTED[c];
         update_location();
@@ -263,17 +265,24 @@ void render(uint32_t time) {
         }
     }
 
-    if(game_status == FAILED) {
+    if(game_status == FAILED || game_status == BEGIN) {
         screen.pen = Pen(255, 255, 255, 128);
         screen.rectangle(Rect(Point(0, 0), screen.bounds));
+        screen.rectangle(Rect(0, screen.bounds.h - 20, screen.bounds.w, 20));
         screen.pen = Pen(0, 0, 0, 255);
+        
+        char buf[9];
+        snprintf(buf, 9, "%08" PRIX32, current_random_seed);
+        std::string text = "Seed: ";
+        text.append(buf);
+        screen.text(text, minimal_font, Rect(0, screen.bounds.h - 20, screen.bounds.w, 20), true, center_center);
+    }
+
+    if(game_status == FAILED) {
         screen.text("You scored: " + std::to_string(score) + "\nPress B", minimal_font, Rect(Point(0, 0), screen.bounds).center(), true, center_center);
         return;
     }
     if(game_status == BEGIN) {
-        screen.pen = Pen(255, 255, 255, 128);
-        screen.rectangle(Rect(Point(0, 0), screen.bounds));
-        screen.pen = Pen(0, 0, 0, 255);
         screen.text("Press B\n(i on keyboard)\nto start!", minimal_font, Rect(Point(0, 0), screen.bounds).center(), true, center_center);
         return;
     }
@@ -312,7 +321,7 @@ void refill_dots(uint8_t *column_counts) {
     }
 }
 
-void explode_chain() {
+void explode_chain(bool refill=false) {
     uint8_t column_counts[game_grid.w] = {0, 0, 0, 0, 0, 0};
 
     if(chain.size() < 2) {
@@ -329,7 +338,9 @@ void explode_chain() {
 
     dots.erase(std::remove_if(dots.begin(), dots.end(), [](Dot dot){return dot.explode;}), dots.end());
 
-    refill_dots(column_counts);
+    if(refill) {
+        refill_dots(column_counts);
+    }
 
     score += chain.size() * chain.size() * chain.size() * multiplier;
 
@@ -353,18 +364,28 @@ void update(uint32_t time) {
             for(auto &dot : dots) {
                 chain.push_back(&dot);
             }
+            random_reset();
             explode_chain();
-            game_status = RUNNING;
+            score = 0;
+            multiplier = 0;
+            game_status = BEGIN;
         }
         return;
     }
 
     if(game_status == BEGIN) {
+        if(buttons.pressed & Button::DPAD_LEFT) {
+            current_random_seed--;
+        }
+        if(buttons.pressed & Button::DPAD_RIGHT) {
+            current_random_seed++;
+        }
         if(buttons.pressed & Button::B) {
             uint8_t column_counts[game_grid.w];
             for(auto i = 0u; i < game_grid.w; i++) {
                 column_counts[i] = game_grid.h;
             }
+            random_reset();
             refill_dots(column_counts);
             game_status = RUNNING;
         }
@@ -434,7 +455,7 @@ void update(uint32_t time) {
             selected -= movement;
         }
     } else {
-        explode_chain();
+        explode_chain(true);
         needs_update = true;
     }
 
