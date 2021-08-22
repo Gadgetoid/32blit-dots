@@ -16,6 +16,13 @@ Vec2 global_dot_offset;
 
 uint32_t score;
 
+enum GAME_STATUS {
+    BEGIN,
+    RUNNING,
+    FAILED
+};
+
+GAME_STATUS game_status = BEGIN;
 
 Pen DOT_COLOURS[5] = {
     Pen(0x99, 0x00, 0xcc), // Purple
@@ -87,6 +94,8 @@ std::vector<Dot *> chain;
 std::vector<Dot> dots;
 std::vector<SpaceDust> particles;
 
+uint32_t multiplier = 1;
+
 Point selected(0, 0);
 
 Dot* game_state[game_grid.w][game_grid.h];
@@ -98,6 +107,36 @@ Dot *dot_at(Point position) {
         }
     }
     return nullptr;
+}
+
+bool move_available() {
+    /* This code is going to be truly bad, but broadly the simplest check seems to be the most sensible approach.
+
+    A game has an available move if any two dots of the same colour are adjacent. Therefore we can scan through the dots
+    a row and/or column at a time and return True if there are adjacent matches*/
+
+    // Do X first since Y dots are contiguous and this *may* be faster...
+    for(auto x = 0; x < game_grid.w; x++) {
+        auto prev = game_state[x][0];
+        for(auto y = 1; y < game_grid.h; y++) {
+            auto curr = game_state[x][y];
+            // TODO maybe internally colour should be an int lookup
+            if(curr && prev && curr->colour == prev->colour) return true;
+            prev = curr;
+        }
+    }
+
+    for(auto y = 0; y < game_grid.h; y++) {
+        auto prev = game_state[0][y];
+        for(auto x = 1; x < game_grid.w; x++) {
+            auto curr = game_state[x][y];
+            // TODO maybe internally colour should be an int lookup
+            if(curr && prev && curr->colour == prev->colour) return true;
+            prev = curr;
+        }
+    }
+
+    return false;
 }
 
 bool adjacent(Dot *a, Dot *b) {
@@ -118,13 +157,13 @@ void init() {
         (screen.bounds.h - game_bounds.h)
     ) + (dot_spacing / 2.0f);
 
-    for(auto y = 0; y < game_grid.h; y++) {
+    /*for(auto y = 0; y < game_grid.h; y++) {
         for(auto x = 0; x < game_grid.w; x++) {
             auto dot = Dot(Vec2(x, y) * dot_spacing);
             dots.emplace_back(dot);
             game_state[x][y] = &dot;
         }
-    }
+    }*/
 }
 
 void render(uint32_t time) {
@@ -201,7 +240,19 @@ void render(uint32_t time) {
     screen.pen = Pen(50, 50, 50);
     screen.rectangle(Rect(0, 0, screen.bounds.w, 20));
     screen.pen = Pen(200, 200, 200);
-    screen.text(std::to_string(score), minimal_font, Point(global_dot_offset.x - dot_radius, 5));
+
+    Point score_position = Point(global_dot_offset.x - dot_radius, 5);
+
+    if(chain.size() >= 2) {
+        uint32_t chain_score = chain.size() * chain.size() * chain.size();
+        if(multiplier > 1) {
+            screen.text(std::to_string(score) + " + (" + std::to_string(chain_score) + " * " + std::to_string(multiplier) + ")", minimal_font, score_position);
+        } else {
+            screen.text(std::to_string(score) + " + " + std::to_string(chain_score), minimal_font, score_position);
+        }
+    } else {
+        screen.text(std::to_string(score), minimal_font, score_position);
+    }
 
 
     for(auto x = 0; x < game_grid.w; x++) {
@@ -210,6 +261,21 @@ void render(uint32_t time) {
             screen.pen = dot ? dot->colour : Pen(0, 0, 0);
             screen.rectangle(Rect(Point(x * 4, y * 4 + 20), Size(3, 3)));
         }
+    }
+
+    if(game_status == FAILED) {
+        screen.pen = Pen(255, 255, 255, 128);
+        screen.rectangle(Rect(Point(0, 0), screen.bounds));
+        screen.pen = Pen(0, 0, 0, 255);
+        screen.text("You scored: " + std::to_string(score) + "\nPress B", minimal_font, Rect(Point(0, 0), screen.bounds).center(), true, center_center);
+        return;
+    }
+    if(game_status == BEGIN) {
+        screen.pen = Pen(255, 255, 255, 128);
+        screen.rectangle(Rect(Point(0, 0), screen.bounds));
+        screen.pen = Pen(0, 0, 0, 255);
+        screen.text("Press B\n(i on keyboard)\nto start!", minimal_font, Rect(Point(0, 0), screen.bounds).center(), true, center_center);
+        return;
     }
 }
 
@@ -231,6 +297,21 @@ void explode(Vec2 origin, Pen colour, float factor=1.0f) {
     }
 }
 
+void refill_dots(uint8_t *column_counts) {
+    for(auto x = 0u; x < game_grid.w; x++) {
+        uint8_t count = column_counts[x];
+        while(count--) {
+            dots.push_back(Dot(Vec2(x, -1 - count) * dot_spacing));
+        }
+    }
+
+	std::sort(dots.begin(), dots.end());
+    for(auto &dot : dots) {
+        if(dot.grid_location.y < 0) continue;
+        game_state[dot.grid_location.x][dot.grid_location.y] = &dot;
+    }
+}
+
 void explode_chain() {
     uint8_t column_counts[game_grid.w] = {0, 0, 0, 0, 0, 0};
 
@@ -248,20 +329,15 @@ void explode_chain() {
 
     dots.erase(std::remove_if(dots.begin(), dots.end(), [](Dot dot){return dot.explode;}), dots.end());
 
-    for(auto x = 0u; x < game_grid.w; x++) {
-        uint8_t count = column_counts[x];
-        while(count--) {
-            dots.push_back(Dot(Vec2(x, -1 - count) * dot_spacing));
-        }
-    }
+    refill_dots(column_counts);
 
-	std::sort(dots.begin(), dots.end());
-    for(auto &dot : dots) {
-        if(dot.grid_location.y < 0) continue;
-        game_state[dot.grid_location.x][dot.grid_location.y] = &dot;
-    }
+    score += chain.size() * chain.size() * chain.size() * multiplier;
 
-    score += chain.size() * chain.size() * chain.size();
+    if(chain.size() >= 4) {
+        multiplier++;
+    } else {
+        multiplier = 1;
+    }
 
     chain.clear();
 }
@@ -271,6 +347,29 @@ void update(uint32_t time) {
     static Point last_movement(0, 0);
     static bool needs_update = false;
     bool falling = false;
+
+    if(game_status == FAILED)  {
+        if(buttons.pressed & Button::B) {
+            for(auto &dot : dots) {
+                chain.push_back(&dot);
+            }
+            explode_chain();
+            game_status = RUNNING;
+        }
+        return;
+    }
+
+    if(game_status == BEGIN) {
+        if(buttons.pressed & Button::B) {
+            uint8_t column_counts[game_grid.w];
+            for(auto i = 0u; i < game_grid.w; i++) {
+                column_counts[i] = game_grid.h;
+            }
+            refill_dots(column_counts);
+            game_status = RUNNING;
+        }
+        return;
+    }
 
     for(auto &dot : dots) {
         if(dot.grid_location.y == game_grid.h - 1) continue; // Easy way to collide with the "floor"
@@ -286,6 +385,10 @@ void update(uint32_t time) {
         for(auto &dot : dots) {
             if(dot.grid_location.y < 0) continue;
             game_state[dot.grid_location.x][dot.grid_location.y] = &dot;
+        }
+        if(!move_available()) {
+            game_status = FAILED;
+            return;
         }
         needs_update = false;
     }
