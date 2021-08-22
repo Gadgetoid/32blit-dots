@@ -7,7 +7,6 @@ constexpr Pen COLOUR_BACKGROUND(255, 255, 255);
 constexpr Pen COLOUR_DOT_NONE(0, 0, 0);
 constexpr Pen COLOUR_LINE(0, 0, 0);
 const uint8_t P_MAX_AGE = 255;
-
 const uint8_t dot_radius = 12;
 
 constexpr Size game_grid(6, 6);
@@ -16,6 +15,7 @@ constexpr Vec2 dot_spacing = Vec2(game_bounds.w / game_grid.w, game_bounds.h / g
 Vec2 global_dot_offset;
 
 uint32_t score;
+
 
 Pen DOT_COLOURS[5] = {
     Pen(0x99, 0x00, 0xcc), // Purple
@@ -35,25 +35,27 @@ Pen DOT_COLOURS_SELECTED[5] = {
 
 struct Dot {
     Vec2 position;
+    Point grid_location;
     Pen colour;
     Pen selected_colour;
     bool explode;
 
-    Dot (Vec2 position) : position(position) {
+    Dot (Vec2 p) {
+        position = p;
         explode = false;
         uint8_t c = blit::random() % 5;
         colour = DOT_COLOURS[c];
         selected_colour = DOT_COLOURS_SELECTED[c];
+        update_location();
     };
 
-    Point grid_location() {
+    void update_location() {
         Vec2 loc = position / dot_spacing;
-        return Point(floor(loc.x), floor(loc.y));
+        grid_location = Point(floor(loc.x), floor(loc.y));
     }
 
     int grid_offset() {
-        Point loc = grid_location();
-        return loc.x + loc.y * game_grid.w;
+        return grid_location.x + grid_location.y * game_grid.w;
     }
 
     bool in(std::vector<Dot *> chain) {
@@ -87,9 +89,11 @@ std::vector<SpaceDust> particles;
 
 Point selected(0, 0);
 
+Dot* game_state[game_grid.w][game_grid.h];
+
 Dot *dot_at(Point position) {
     for(auto &dot : dots) {
-        if(position == dot.grid_location()) {
+        if(position == dot.grid_location) {
             return &dot;
         }
     }
@@ -97,8 +101,8 @@ Dot *dot_at(Point position) {
 }
 
 bool adjacent(Dot *a, Dot *b) {
-    Point a_pos = a->grid_location();
-    Point b_pos = b->grid_location();
+    Point a_pos = a->grid_location;
+    Point b_pos = b->grid_location;
     int ax = a_pos.x - b_pos.x;
     int ay = a_pos.y - b_pos.y;
     if((ax == -1 || ax == 1) && ay == 0) return true;
@@ -114,9 +118,11 @@ void init() {
         (screen.bounds.h - game_bounds.h)
     ) + (dot_spacing / 2.0f);
 
-    for(auto y = 0u; y < game_grid.h; y++) {
-        for(auto x = 0u; x < game_grid.w; x++) {
-            dots.push_back(Dot(Vec2(x, y) * dot_spacing));
+    for(auto y = 0; y < game_grid.h; y++) {
+        for(auto x = 0; x < game_grid.w; x++) {
+            auto dot = Dot(Vec2(x, y) * dot_spacing);
+            dots.emplace_back(dot);
+            game_state[x][y] = &dot;
         }
     }
 }
@@ -137,7 +143,7 @@ void render(uint32_t time) {
     
         Vec2 dot_origin = global_dot_offset + dot.position;
     
-        if(dot.grid_location() == selected || dot.in(chain)) {
+        if(dot.grid_location == selected || dot.in(chain)) {
             screen.pen = dot.selected_colour;
         } else {
             screen.pen = dot.colour;
@@ -196,6 +202,15 @@ void render(uint32_t time) {
     screen.rectangle(Rect(0, 0, screen.bounds.w, 20));
     screen.pen = Pen(200, 200, 200);
     screen.text(std::to_string(score), minimal_font, Point(global_dot_offset.x - dot_radius, 5));
+
+
+    for(auto x = 0; x < game_grid.w; x++) {
+        for(auto y = 0; y < game_grid.h; y++) {
+            auto dot = game_state[x][y];
+            screen.pen = dot ? dot->colour : Pen(0, 0, 0);
+            screen.rectangle(Rect(Point(x * 4, y * 4 + 20), Size(3, 3)));
+        }
+    }
 }
 
 void explode(Vec2 origin, Pen colour, float factor=1.0f) {
@@ -227,7 +242,8 @@ void explode_chain() {
     for(auto &dot : chain) {
         dot->explode = true;
         explode(dot->position, dot->colour);
-        column_counts[dot->grid_location().x] += 1;
+        column_counts[dot->grid_location.x] += 1;
+        game_state[dot->grid_location.x][dot->grid_location.y] = nullptr;
     }
 
     dots.erase(std::remove_if(dots.begin(), dots.end(), [](Dot dot){return dot.explode;}), dots.end());
@@ -240,6 +256,10 @@ void explode_chain() {
     }
 
 	std::sort(dots.begin(), dots.end());
+    for(auto &dot : dots) {
+        if(dot.grid_location.y < 0) continue;
+        game_state[dot.grid_location.x][dot.grid_location.y] = &dot;
+    }
 
     score += chain.size() * chain.size() * chain.size();
 
@@ -249,14 +269,25 @@ void explode_chain() {
 void update(uint32_t time) {
     Point movement(0, 0);
     static Point last_movement(0, 0);
+    static bool needs_update = false;
+    bool falling = false;
 
     for(auto &dot : dots) {
-        Point position = dot.grid_location();
-        if(position.y == game_grid.h - 1) continue; // Easy way to collide with the "floor"
-        auto dot_below = dot_at(position + Point(0, 1));
+        if(dot.grid_location.y == game_grid.h - 1) continue; // Easy way to collide with the "floor"
+        auto dot_below = dot_at(dot.grid_location + Point(0, 1));
         if(!dot_below) {
             dot.position.y += dot_spacing.y / float(dot_radius);
+            dot.update_location();
+            falling = true;
         }
+    }
+
+    if(!falling && needs_update) {
+        for(auto &dot : dots) {
+            if(dot.grid_location.y < 0) continue;
+            game_state[dot.grid_location.x][dot.grid_location.y] = &dot;
+        }
+        needs_update = false;
     }
 
     if(buttons.pressed & Button::DPAD_RIGHT) {
@@ -301,6 +332,7 @@ void update(uint32_t time) {
         }
     } else {
         explode_chain();
+        needs_update = true;
     }
 
     last_movement = movement;
