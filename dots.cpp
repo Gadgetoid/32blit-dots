@@ -309,7 +309,7 @@ void update(uint32_t time) {
     selected += movement;
 
     if(buttons & Button::A) {
-        auto dot = dot_at(selected);
+        auto dot = game_state[selected.x][selected.y];
         if(dot) {
             if(chain.size() == 0) {
                 chain.push_back(dot);
