@@ -256,7 +256,7 @@ void render(uint32_t time) {
         screen.text(std::to_string(score), minimal_font, score_position);
     }
 
-
+#ifdef DEBUG
     for(auto x = 0; x < game_grid.w; x++) {
         for(auto y = 0; y < game_grid.h; y++) {
             auto dot = game_state[x][y];
@@ -264,6 +264,7 @@ void render(uint32_t time) {
             screen.rectangle(Rect(Point(x * 4, y * 4 + 20), Size(3, 3)));
         }
     }
+#endif
 
     if(game_status == FAILED || game_status == BEGIN) {
         screen.pen = Pen(255, 255, 255, 128);
