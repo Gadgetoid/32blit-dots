@@ -1,18 +1,9 @@
-#pragma once
-#include "32blit.hpp"
-
-// This stuff is all totally random
-enum RANDOM_SOURCE {
-    PRNG, // Psuedo random, uses a linear-feedback shift register
-    HRNG  // Really very random, uses the cryptographically awesome hardware RNG
-};
+#include "random.hpp"
 
 RANDOM_SOURCE current_random_source = RANDOM_SOURCE::PRNG;
-uint32_t current_random_seed = 0x00750075;
-uint32_t prng_lfsr = current_random_seed;
-const uint16_t prng_tap = 0x74b8; // Magic number, do not drink
+uint32_t prng_lfsr = 0;
 
-void random_reset() {
+void random_reset(uint32_t current_random_seed) {
     prng_lfsr = current_random_seed;
 }
 
