@@ -3,11 +3,16 @@
 #include "game.hpp"
 #include "normal.hpp"
 #include "puzzle.hpp"
+#include "colours.hpp"
+
+uint8_t maskdata[320 * 240];
 
 MainMenu::MainMenu(Game *game, bool initial_state) : game(game), menu("", 
     {{Menu_Normal, "Normal"},
     {Menu_Puzzle, "Puzzle"}},
     outline_font_10x14) {
+
+    mask = new blit::Surface(maskdata, blit::PixelFormat::M, blit::Size(blit::screen.bounds.w, blit::screen.bounds.h));
 
     menu.set_display_rect({blit::screen.bounds.w - menu_target_width, 0, menu_target_width, blit::screen.bounds.h});
 
@@ -17,6 +22,7 @@ MainMenu::MainMenu(Game *game, bool initial_state) : game(game), menu("",
 }
 
 MainMenu::~MainMenu() {
+    delete mask;
 }
 
 void MainMenu::update(uint32_t time) {
@@ -26,9 +32,20 @@ void MainMenu::update(uint32_t time) {
 void MainMenu::render() {
     using blit::screen;
 
-    screen.pen = {0x63, 0x9b, 0xff}; // "sky" colour
+    screen.pen = blit::hsv_to_rgba((blit::now() + 5000.0f) / 10000.0f, 1.0f, 1.0f);
     screen.clear();
 
+    for(auto y = 0; y < 16; y++) {
+        mask->pen = 254 - y * 16;
+        mask->text("Dots dots dots dots dots dots dots", outline_font_10x14, blit::Point(8, 8 + y * 15));
+    }
+
+    screen.pen = blit::hsv_to_rgba(blit::now() / 10000.0f, 1.0f, 1.0f);
+    screen.mask = mask;
+    screen.clear();
+    screen.mask = nullptr;
+
+    screen.alpha = 200;
     menu.render();
 
     if(!message.empty())

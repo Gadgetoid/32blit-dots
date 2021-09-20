@@ -25,6 +25,8 @@ private:
 
     Game *game;
 
+    blit::Surface *mask;
+
     Menu menu;
     MainMenuItem selected = Menu_Normal;
     std::string message;
