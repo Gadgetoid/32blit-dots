@@ -38,6 +38,14 @@ struct Dot {
         selected_colour = DOT_COLOURS_SELECTED[c];
         update_location();
     };
+    
+    Dot (blit::Point p, uint8_t c) {
+        position = p * 256;
+        explode = false;
+        colour = DOT_COLOURS[c];
+        selected_colour = DOT_COLOURS_SELECTED[c];
+        update_location();
+    };
 
     blit::Point screen_location() {
         return blit::Point(

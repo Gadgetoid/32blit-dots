@@ -4,21 +4,22 @@
 #include "fonts.hpp"
 #include "stage.hpp"
 #include "menu.hpp"
+#include "dot.hpp"
+#include "particles.hpp"
 
-class Game;
+#include "gamemode.hpp"
 
-class Puzzle final : public Stage {
-public:
-    Puzzle(Game *game);
-    ~Puzzle() override;
 
-    void update(uint32_t time) override;
-    void render() override;
+class Puzzle final : public GameMode {
+    public:
+        Puzzle(Game *game) : GameMode(game, "Puzzle", "Select Level")  {
+            set_level(0, 3);
+        };;
 
-private:
-    enum PauseMenuItem {
-        Menu_Continue = 0,
-        Menu_Restart,
-        Menu_Quit
-    }
-}
+        void update(uint32_t time) override;
+        void restart() override;
+        void render_level_select(PauseMenuItem id, bool in_menu, blit::Rect level_select_rect) override;
+        void on_won() override;
+        void on_failed() override;
+        void load_level();
+};

@@ -35,6 +35,13 @@ static Game game;
 
 void init() {
     set_screen_mode(ScreenMode::hires);
+
+    channels[2].waveforms = SQUARE;
+    channels[2].volume = 0x8000;
+    channels[2].sustain = 0;
+    channels[2].decay_ms = 20;
+    channels[2].release_ms = 20;
+
     game.change_state<MainMenu>(true);
 }
 

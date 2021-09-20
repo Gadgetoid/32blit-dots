@@ -2,6 +2,7 @@
 #include "main-menu.hpp"
 #include "game.hpp"
 #include "normal.hpp"
+#include "puzzle.hpp"
 
 MainMenu::MainMenu(Game *game, bool initial_state) : game(game), menu("", 
     {{Menu_Normal, "Normal"},
@@ -46,7 +47,7 @@ void MainMenu::on_menu_item_selected(const ::Menu::Item &item) {
             game->change_state<Normal>();
             break;
         case Menu_Puzzle:
-            //game->change_state<Puzzle>();
+            game->change_state<Puzzle>();
             break;
     }
 }
