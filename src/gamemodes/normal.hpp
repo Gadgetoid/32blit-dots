@@ -7,6 +7,15 @@
 #include "dot.hpp"
 #include "particles.hpp"
 
+#ifdef PICO_BOARD
+#include "hardware/pwm.h"
+#endif
+
+// TODO merge this upstream? We're using "Point" as a fixed 24-8 alternative to Vec2
+namespace blit {
+    inline Point operator*  (Point lhs, const Point &rhs) { lhs.x *= rhs.x; lhs.y *= rhs.y; return lhs; }
+}
+
 class Game;
 
 class Normal final : public Stage {
@@ -26,6 +35,7 @@ private:
     enum PauseMenuItem {
         Menu_Continue = 0,
         Menu_Change_Seed,
+        Menu_Change_Brightness,
         Menu_Restart,
         Menu_Quit
     };
@@ -48,12 +58,14 @@ private:
     std::vector<Dot> dots;
     std::vector<SpaceDust> particles;
 
-    blit::Vec2 global_dot_offset;
+    blit::Point global_dot_offset;
 
     uint32_t score = 0;
     uint32_t multiplier = 1;
 
     blit::Point selected;
+
+    int32_t brightness = 255;
 
     Dot* game_state[game_grid.w][game_grid.h];
 
@@ -64,6 +76,16 @@ private:
             }
         }
         return nullptr;
+    }
+
+    void set_backlight(uint8_t brightness) {
+#ifdef PICO_BOARD
+        // gamma correct the provided 0-255 brightness value onto a
+        // 0-65535 range for the pwm counter
+        float gamma = 2.8;
+        uint16_t value = (uint16_t)(pow((float)(brightness) / 255.0f, gamma) * 65535.0f + 0.5f);
+        pwm_set_gpio_level(PICOSYSTEM_BACKLIGHT_PIN, value);
+#endif
     }
 
     bool move_available() {
@@ -108,5 +130,5 @@ private:
 
     void refill_dots(uint8_t *column_counts);
     void explode_chain(bool refill=false);
-    void explode(blit::Vec2 origin, blit::Pen colour, float factor=1.0f);
+    void explode(blit::Point origin, blit::Pen colour, float factor=1.0f);
 };

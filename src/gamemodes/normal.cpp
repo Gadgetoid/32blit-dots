@@ -10,11 +10,13 @@ Normal::Normal(Game *game) : game(game),
         {Menu_Continue, "Continue"},
         {Menu_Restart, "Restart"},
         {Menu_Change_Seed, "Change Seed"},
+        {Menu_Change_Brightness, "Brightness"},
         {Menu_Quit, "Quit"}
     }, outline_font_10x14),
     end_menu("Normal", {
         {Menu_Restart, "Start"},
         {Menu_Change_Seed, "Change Seed"},
+        {Menu_Change_Brightness, "Brightness"},
         {Menu_Quit, "Quit"}
     }, outline_font_10x14) {
 
@@ -30,10 +32,10 @@ Normal::Normal(Game *game) : game(game),
     //end_menu.set_on_item_rendered(std::bind(&Normal::on_menu_rendered, this, std::placeholders::_1));
     end_menu.set_on_item_updated(std::bind(&Normal::on_menu_updated, this, std::placeholders::_1));
 
-    global_dot_offset = blit::Vec2(
+    global_dot_offset = blit::Point(
         (blit::screen.bounds.w - game_bounds.w) / 2,
         (blit::screen.bounds.h - game_bounds.h) / 2
-    ) + (dot_spacing / 2.0f);
+    ) + (dot_spacing / 2);
 };
 
 void Normal::render() {
@@ -43,35 +45,18 @@ void Normal::render() {
     auto item = state == Failed ? end_menu.get_selected_item() : pause_menu.get_selected_item();
     bool running = state == Running;
 
+    blit::Rect brightness_rect(2, 0, blit::screen.bounds.w - menu_target_width - 4, 24);
+
+    brightness_rect.y += (blit::screen.bounds.h / 2) - (brightness_rect.h / 2);
+
     message_rect.y = blit::screen.bounds.h - message_rect.h;
 
     blit::screen.pen = colour_background;
     blit::screen.clear();
 
-    if(!running) {
-        message_rect.w -= menu_target_width;
-
-        if(item.id == Menu_Change_Seed) {
-            blit::screen.pen = colour_sky_blue;
-            blit::screen.rectangle(message_rect);
-            message_rect.deflate(2);
-            blit::screen.pen = colour_white;
-            blit::screen.rectangle(message_rect);
-            message_rect.inflate(2);
-        }
-    }
-
-    snprintf(buf, 9, "%08" PRIX32, current_random_seed);
-    if(item.id == Menu_Change_Seed && !running) {text += "< ";};
-    text += "Seed: ";
-    text += buf;
-    if(item.id == Menu_Change_Seed && !running) {text += " >";};
-    blit::screen.pen = colour_sky_blue;
-    blit::screen.text(text, outline_font_10x14, message_rect, true, blit::TextAlign::center_center);
-
     // Draw the cursor
     if(state != Failed) {
-        blit::Vec2 selected_origin = global_dot_offset + blit::Vec2(selected) * dot_spacing;
+        blit::Point selected_origin = global_dot_offset + selected * dot_spacing;
         blit::screen.pen = colour_selected;
         blit::screen.circle(selected_origin, 15);
         blit::screen.pen = colour_background;
@@ -86,7 +71,7 @@ void Normal::render() {
         } else {
             blit::screen.pen = dot.colour;
         }
-        blit::screen.circle(global_dot_offset + dot.position * dot_spacing, dot_radius);
+        blit::screen.circle(global_dot_offset + dot.screen_location(), dot_radius);
     };
 
     if(chain.size() > 0) {
@@ -123,6 +108,48 @@ void Normal::render() {
         };
     }
 
+    for(auto &p: particles){
+        p.render(global_dot_offset);
+    }
+    blit::screen.alpha = 255;
+
+    if(!running) {
+        message_rect.w -= menu_target_width;
+
+        switch(item.id) {
+            case Menu_Change_Seed:
+                blit::screen.pen = colour_sky_blue;
+                blit::screen.rectangle(message_rect);
+                message_rect.deflate(2);
+                blit::screen.pen = colour_white;
+                blit::screen.rectangle(message_rect);
+                message_rect.inflate(2);
+                break;
+            case Menu_Change_Brightness:
+                blit::screen.pen = colour_sky_blue;
+                blit::screen.rectangle(brightness_rect);
+                brightness_rect.deflate(2);
+                blit::screen.pen = colour_background;
+                blit::screen.rectangle(brightness_rect);
+                brightness_rect.deflate(2);
+                blit::screen.pen = colour_sky_blue;
+                brightness_rect.w *= brightness;
+                brightness_rect.w /= 255;
+                blit::screen.rectangle(brightness_rect);
+                break;
+            default:
+                break;
+        }
+    }
+
+    snprintf(buf, 9, "%08" PRIX32, current_random_seed);
+    if(item.id == Menu_Change_Seed && !running) {text += "< ";};
+    text += "Seed: ";
+    text += buf;
+    if(item.id == Menu_Change_Seed && !running) {text += " >";};
+    blit::screen.pen = colour_sky_blue;
+    blit::screen.text(text, outline_font_10x14, message_rect, true, blit::TextAlign::center_center);
+
     // Draw the score
     message_rect.y = 0;
     blit::screen.pen = colour_white;
@@ -140,17 +167,6 @@ void Normal::render() {
         blit::screen.text(std::to_string(score), outline_font_10x14, message_rect, true, blit::TextAlign::center_center);
     }
 
-    for(auto &p: particles){
-        blit::screen.pen = p.color;
-        blit::screen.alpha = P_MAX_AGE - (uint8_t)p.age;
-        p.age += 2;
-        p.vel += blit::Vec2(0.0f, 0.098f);
-        p.pos += p.vel;
-        blit::screen.circle(p.pos + global_dot_offset, 3);
-    }
-    blit::screen.alpha = 255;
-    particles.erase(std::remove_if(particles.begin(), particles.end(), [](SpaceDust particle) { return (particle.age >= P_MAX_AGE); }), particles.end());
-
     if(state == Paused) {pause_menu.render();return;}
     if(state == Failed) {end_menu.render();return;}
 }
@@ -160,21 +176,37 @@ void Normal::update(uint32_t time) {
     static bool needs_update = false;
     bool falling = false;
 
+    // Button B lets us enter/exit the pause menu
+    if(blit::buttons.pressed & blit::Button::B) {
+        if(state == Running) {
+            state = Paused;
+        } else if(state == Paused) {
+            state = Running;
+        }
+    }
+
     if(state == Paused) {pause_menu.update(time);return;}
     if(state == Failed) {end_menu.update(time);return;}
 
     // Update the dots game state here
-    if(blit::buttons.pressed & blit::Button::B) {
-        state = Paused;
+
+    for(auto &p: particles){
+        p.update();
     }
 
+    particles.erase(std::remove_if(particles.begin(), particles.end(), [](SpaceDust particle) { return (particle.age >= P_MAX_AGE); }), particles.end());
+
     for(auto &dot : dots) {
-        if(dot.grid_location.y == game_grid.h - 1) continue; // Easy way to collide with the "floor"
+        // Easy way to collide with the "floor"
+        if(dot.grid_location.y == game_grid.h - 1) {
+            dot.position.y &= 0xffffff00;
+            continue;
+        };
         auto dot_below = dot_at(dot.grid_location + blit::Point(0, 1));
         if(dot_below) {
-            dot.position.y = floorf(dot.position.y);
+            dot.position.y &= 0xffffff00;
         } else {
-            dot.position.y += 0.1f;
+            dot.position.y += 25;
             falling = true;
         }
         dot.update_location();
@@ -250,7 +282,7 @@ void Normal::refill_dots(uint8_t *column_counts) {
     for(auto x = 0u; x < game_grid.w; x++) {
         uint8_t count = column_counts[x];
         while(count--) {
-            dots.push_back(Dot(blit::Vec2(x, -1 - count)));
+            dots.push_back(Dot(blit::Point(x, -1 - count)));
         }
     }
 
@@ -261,21 +293,13 @@ void Normal::refill_dots(uint8_t *column_counts) {
     }
 }
 
-void Normal::explode(blit::Vec2 origin, blit::Pen colour, float factor) {
+void Normal::explode(blit::Point origin, blit::Pen colour, float factor) {
     blit::channels[2].frequency = 800;
     blit::channels[2].trigger_attack();
     uint8_t count = 5 + (blit::random() % 5);
     count *= factor;
     for(auto x = 0u; x < count; x++) {
-        float r = blit::random() % 360;
-        float v = (50.0f + (blit::random() % 100)) / 100.0f;
-        r  = r * blit::pi / 180.0f;
-
-        particles.push_back(SpaceDust(
-            origin,
-            blit::Vec2(cosf(r) * v, sinf(r) * v),
-            colour
-        ));
+        particles.push_back(SpaceDust(origin, colour));
     }
 }
 
@@ -339,6 +363,18 @@ void Normal::on_menu_updated(const ::Menu::Item &item) {
             }
             if (blit::buttons.pressed & blit::Button::DPAD_RIGHT) {
                 current_random_seed--;
+            }
+            break;
+        case Menu_Change_Brightness:
+            if (blit::buttons.pressed & blit::Button::DPAD_LEFT) {
+                brightness -= 16;
+                if(brightness < 0) brightness = 0;
+                set_backlight((uint8_t)brightness);
+            }
+            if (blit::buttons.pressed & blit::Button::DPAD_RIGHT) {
+                brightness += 16;
+                if(brightness > 255) brightness = 255;
+                set_backlight((uint8_t)brightness);
             }
             break;
         case Menu_Restart:

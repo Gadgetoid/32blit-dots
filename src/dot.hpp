@@ -21,17 +21,17 @@ const blit::Pen DOT_COLOURS_SELECTED[5] = {
 const uint8_t dot_radius = 10;
 constexpr blit::Size game_grid(6, 6);
 constexpr blit::Size game_bounds(240 - 24 - 24, 240 - 24 - 24);
-constexpr blit::Vec2 dot_spacing = blit::Vec2(game_bounds.w / game_grid.w, game_bounds.h / game_grid.h);
+constexpr blit::Point dot_spacing = blit::Point(game_bounds.w / game_grid.w, game_bounds.h / game_grid.h);
 
 struct Dot {
-    blit::Vec2 position;
+    blit::Point position;
     blit::Point grid_location;
     blit::Pen colour;
     blit::Pen selected_colour;
     bool explode;
 
-    Dot (blit::Vec2 p) {
-        position = p;
+    Dot (blit::Point p) {
+        position = p * 256;
         explode = false;
         uint8_t c = get_random_int() % 5;
         colour = DOT_COLOURS[c];
@@ -40,11 +40,14 @@ struct Dot {
     };
 
     blit::Point screen_location() {
-        return {grid_location.x * dot_spacing.x, grid_location.y * dot_spacing.y};
+        return blit::Point(
+            (position.x * dot_spacing.x) >> 8,
+            (position.y * dot_spacing.y) >> 8
+        );
     }
 
     void update_location() {
-        grid_location = blit::Point(floor(position.x), floor(position.y));
+        grid_location = blit::Point(position.x >> 8, position.y >> 8);
     }
 
     int grid_offset() {
@@ -58,9 +61,9 @@ struct Dot {
         return false;
     }
     
-	const bool operator < (const Dot& rhs) const {
-        blit::Point a = position;
-        blit::Point b = rhs.position;
+	bool operator < (const Dot& rhs) const {
+        blit::Point a = grid_location;
+        blit::Point b = rhs.grid_location;
         uint32_t offset_a = a.x + a.y * game_grid.w;
         uint32_t offset_b = b.x + b.y * game_grid.w;
         return offset_a > offset_b;
