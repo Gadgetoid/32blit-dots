@@ -45,7 +45,6 @@ void MainMenu::render() {
     screen.clear();
     screen.mask = nullptr;
 
-    screen.alpha = 200;
     menu.render();
 
     if(!message.empty())

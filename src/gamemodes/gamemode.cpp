@@ -9,15 +9,14 @@ GameMode::GameMode(Game *game, std::string_view game_mode_title, const char *cha
     pause_menu("Paused", {
         {Menu_Continue, "Continue"},
         {Menu_Restart, "Restart"},
-        {Menu_Change_Seed, change_level_text},
         {Menu_Change_Brightness, "Brightness"},
-        {Menu_Quit, "Quit"}
+        {Menu_Quit_Level, "Quit"}
     }, outline_font_10x14),
     end_menu(game_mode_title, {
-        {Menu_Restart, "Start"},
+        {Menu_Start, "Start"},
         {Menu_Change_Seed, change_level_text},
         {Menu_Change_Brightness, "Brightness"},
-        {Menu_Quit, "Quit"}
+        {Menu_Quit, "Mein Menu"}
     }, outline_font_10x14) {
 
     state = EndMenu;
@@ -36,12 +35,15 @@ GameMode::GameMode(Game *game, std::string_view game_mode_title, const char *cha
         (blit::screen.bounds.w - game_bounds.w) / 2,
         (blit::screen.bounds.h - game_bounds.h) / 2
     ) + (dot_spacing / 2);
+
+    chain.reserve(game_grid.area());
+    dots.reserve(game_grid.area());
 };
 
 void GameMode::render_level_select(PauseMenuItem id, bool in_menu, blit::Rect level_select_rect) {
     char buf[9];
     std::string text = "";
-    
+
     if (in_menu) {
         blit::screen.pen = colour_sky_blue;
         blit::screen.rectangle(level_select_rect);
@@ -84,12 +86,6 @@ void GameMode::render() {
     }
 
     for(auto &dot : dots) {
-        if(dot.explode) {
-            blit::screen.pen = {0, 0, 0};
-            blit::screen.circle(global_dot_offset + dot.screen_location(), dot_radius);
-            continue;
-        }
-    
         if(dot.grid_location == selected || dot.in(chain)) {
             blit::screen.pen = dot.selected_colour;
         } else {
@@ -207,7 +203,7 @@ void GameMode::on_menu_rendered(const ::Menu::Item &item) {
 
 }
 
-void GameMode::refill_dots(uint8_t *column_counts) {
+void GameMode::refill_dots(const uint8_t *column_counts) {
     for(auto x = 0u; x < game_grid.w; x++) {
         uint8_t count = column_counts[x];
         while(count--) {
@@ -222,10 +218,8 @@ void GameMode::refill_dots(uint8_t *column_counts) {
     }
 }
 
-void GameMode::explode(blit::Point origin, blit::Pen colour, float factor) {
-    uint8_t count = 5 + (blit::random() % 5);
-    count *= factor;
-    for(auto x = 0u; x < count; x++) {
+void GameMode::explode(blit::Point origin, blit::Pen colour) {
+    for(auto x = 0u; x < 5; x++) {
         particles.push_back(SpaceDust(origin, colour));
     }
 }
@@ -266,16 +260,27 @@ void GameMode::explode_chain(bool refill) {
     chain.clear();
 }
 
-void GameMode::restart() {
-    explode_all_dots();
-    reset_score();
+void GameMode::load_level() {
     uint8_t column_counts[game_grid.w];
     for(auto i = 0u; i < game_grid.w; i++) {
         column_counts[i] = game_grid.h;
     }
     random_reset(current_level);
     refill_dots(column_counts);
+}
+
+void GameMode::restart() {
+    explode_all_dots();
+    reset_score();
+    load_level();
     state = Running;
+}
+
+void GameMode::quit() {
+    explode_all_dots();
+    reset_score();
+    load_level();
+    state = EndMenu;
 }
 
 void GameMode::on_menu_updated(const ::Menu::Item &item) {
@@ -316,11 +321,143 @@ void GameMode::on_menu_activated(const ::Menu::Item &item) {
             break;
         case Menu_Change_Seed:
             break;
+        case Menu_Start:
+            state = Running;
+            break;
         case Menu_Restart:
             restart();
+            break;
+        case Menu_Quit_Level:
+            quit();
             break;
         case Menu_Quit:
             game->change_state<MainMenu>();
             break;
     }
+}
+
+void GameMode::update_particles() {
+    if(state != Running && state != Failed && state != EndMenu) return;
+
+    for(auto &p: particles){
+        p.update();
+    }
+
+    particles.erase(std::remove_if(particles.begin(), particles.end(), [](SpaceDust particle) { return (particle.age >= P_MAX_AGE); }), particles.end());
+}
+
+void GameMode::explode_all_dots() {
+    for(auto &dot : dots) {
+        explode(dot.position * dot_spacing, dot.colour);
+    }
+    clear_game_state();
+    dots.clear();
+}
+
+void GameMode::update_dots() {
+    if(state != Running && state != EndMenu) return;
+
+    bool falling = false;
+
+    for(auto &dot : dots) {
+        // Easy way to collide with the "floor"
+        if(dot.grid_location.y == game_grid.h - 1) {
+            dot.position.y &= 0xffffff00;
+            continue;
+        };
+        auto dot_below = dot_at(dot.grid_location + blit::Point(0, 1));
+        if(dot_below) {
+            dot.position.y &= 0xffffff00;
+        } else {
+            dot.position.y += 25;
+            falling = true;
+        }
+        dot.update_location();
+    }
+
+    if(!falling && needs_update) {
+        // Reset the game state to empty
+        clear_game_state();
+        // Rebuild the game state from the available dots
+        for(auto &dot : dots) {
+            if(dot.grid_location.y < 0) continue;
+            game_state[dot.grid_location.x][dot.grid_location.y] = &dot;
+        }
+        if(!move_available()) {
+            if(grid_empty()) {
+                state = Won;
+                on_won();
+            } else {
+                state = Failed;
+                on_failed();
+            }
+            return;
+        }
+        needs_update = false;
+    }
+}
+
+void GameMode::update_input(bool refill_destroyed_dots) {
+    if(state != Running) return;
+
+    blit::Point movement(0, 0);
+
+    if(blit::buttons.pressed & blit::Button::DPAD_RIGHT) {
+        movement.x = 1;
+    }else if(blit::buttons.pressed & blit::Button::DPAD_LEFT) {
+        movement.x = -1;
+    }
+    if(!game_grid.contains(selected + movement)) {
+        movement.x = 0;
+    }
+    if(blit::buttons.pressed & blit::Button::DPAD_DOWN) {
+        movement.y = 1;
+    }else if(blit::buttons.pressed & blit::Button::DPAD_UP) {
+        movement.y = -1;
+    }
+    if(!game_grid.contains(selected + movement)) {
+        movement.y = 0;
+    }
+    selected += movement;
+
+    if(blit::buttons & blit::Button::A) {
+        auto dot = game_state[selected.x][selected.y];
+        if(dot) {
+            if(chain.size() == 0) {
+                chain.push_back(dot);
+            } else if(dot->colour == chain.front()->colour && adjacent(dot, chain.back())) {
+                if(!dot->in(chain)) {
+                    chain.push_back(dot);
+                } else {
+                    // Dot is in chain already
+                    if(dot == chain[chain.size() - 2]) {
+                        chain.pop_back();
+                    } else {
+                        selected -= movement;
+                    }
+                }
+            } else {
+                selected -= movement;
+            }
+        } else {
+            selected -= movement;
+        }
+    } else {
+        explode_chain(refill_destroyed_dots);
+        needs_update = true;
+    }
+}
+
+void GameMode::update_menus(uint32_t time) {
+    // Button B lets us enter/exit the pause menu
+    if(blit::buttons.pressed & blit::Button::B) {
+        if(state == Running || state == Failed) {
+            pause();
+        } else if(state == Paused) {
+            resume();
+        }
+    }
+
+    if(state == Paused) {pause_menu.update(time);return;}
+    if(state == EndMenu) {end_menu.update(time);return;}
 }

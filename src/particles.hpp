@@ -34,7 +34,7 @@ struct SpaceDust {
         pos += vel;
     }
 
-    void render(blit::Point offset) {
+    void render(const blit::Point offset) {
         blit::screen.pen = color;
         blit::screen.alpha = P_MAX_AGE - (uint8_t)age;
         blit::Point ppos = blit::Point(pos.x >> 8, pos.y >> 8);

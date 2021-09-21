@@ -35,6 +35,8 @@ public:
         Menu_Continue = 0,
         Menu_Change_Seed,
         Menu_Change_Brightness,
+        Menu_Quit_Level,
+        Menu_Start,
         Menu_Restart,
         Menu_Quit
     };
@@ -44,146 +46,32 @@ public:
     virtual void render_level_select(PauseMenuItem id, bool in_menu, blit::Rect level_select_rect);
     virtual void on_won();
     virtual void on_failed();
+    virtual void quit();
 
     virtual void render_won();
     virtual void render_failed();
+    virtual void load_level();
 
     void on_menu_rendered(const ::Menu::Item &item);
     void on_menu_updated(const ::Menu::Item &item);
     void on_menu_activated(const Menu::Item &item);
 
-    void update_particles() {
-        if(state != Running && state != Failed) return;
-
-        for(auto &p: particles){
-            p.update();
-        }
-        particles.erase(std::remove_if(particles.begin(), particles.end(), [](SpaceDust particle) { return (particle.age >= P_MAX_AGE); }), particles.end());
-    };
+    void update_particles();
 
     void reset_score() {
         score = 0;
         multiplier = 1;
     }
 
-    void explode_all_dots() {
-        for(auto &dot : dots) {
-            chain.push_back(&dot);
-        }
-        explode_chain();
-    }
+    void explode_all_dots();
 
-    void update_dots() {
-        if(state != Running) return;
+    void update_dots();
 
-        bool falling = false;
+    void clear_dots() {dots.clear();}
 
-        for(auto &dot : dots) {
-            // Easy way to collide with the "floor"
-            if(dot.grid_location.y == game_grid.h - 1) {
-                dot.position.y &= 0xffffff00;
-                continue;
-            };
-            auto dot_below = dot_at(dot.grid_location + blit::Point(0, 1));
-            if(dot_below) {
-                dot.position.y &= 0xffffff00;
-            } else {
-                dot.position.y += 25;
-                falling = true;
-            }
-            dot.update_location();
-        }
+    void update_input(bool refill_destroyed_dots=true);
 
-        if(!falling && needs_update) {
-            // Reset the game state to empty
-            for(auto y = 0u; y < game_grid.h; y++) {
-                for(auto x = 0u; x < game_grid.w; x++) {
-                    game_state[x][y] = nullptr;
-                }
-            }
-            // Rebuild the game state from the available dots
-            for(auto &dot : dots) {
-                if(dot.grid_location.y < 0) continue;
-                game_state[dot.grid_location.x][dot.grid_location.y] = &dot;
-            }
-            if(!move_available()) {
-                if(grid_empty()) {
-                    state = Won;
-                    on_won();
-                } else {
-                    state = Failed;
-                    on_failed();
-                }
-                return;
-            }
-            needs_update = false;
-        }
-    }
-
-    void update_input(bool refill_destroyed_dots=true) {
-        if(state != Running) return;
-
-        blit::Point movement(0, 0);
-
-        if(blit::buttons.pressed & blit::Button::DPAD_RIGHT) {
-            movement.x = 1;
-        }else if(blit::buttons.pressed & blit::Button::DPAD_LEFT) {
-            movement.x = -1;
-        }
-        if(!game_grid.contains(selected + movement)) {
-            movement.x = 0;
-        }
-        if(blit::buttons.pressed & blit::Button::DPAD_DOWN) {
-            movement.y = 1;
-        }else if(blit::buttons.pressed & blit::Button::DPAD_UP) {
-            movement.y = -1;
-        }
-        if(!game_grid.contains(selected + movement)) {
-            movement.y = 0;
-        }
-        selected += movement;
-
-        if(blit::buttons & blit::Button::A) {
-            auto dot = game_state[selected.x][selected.y];
-            if(dot) {
-                if(chain.size() == 0) {
-                    chain.push_back(dot);
-                } else if(dot->colour == chain.front()->colour && adjacent(dot, chain.back())) {
-                    if(!dot->in(chain)) {
-                        chain.push_back(dot);
-                    } else {
-                        // Dot is in chain already
-                        if(dot == chain[chain.size() - 2]) {
-                            chain.pop_back();
-                        } else {
-                            selected -= movement;
-                        }
-                    }
-                } else {
-                    selected -= movement;
-                }
-            } else {
-                selected -= movement;
-            }
-        } else {
-            explode_chain(refill_destroyed_dots);
-            needs_update = true;
-        }
-    }
-
-    void update_menus(uint32_t time) {
-        // Button B lets us enter/exit the pause menu
-        if(blit::buttons.pressed & blit::Button::B) {
-            if(state == Running || state == Failed) {
-                pause();
-            } else if(state == Paused) {
-                resume();
-            }
-        }
-
-        if(state == Paused) {pause_menu.update(time);return;}
-        if(state == EndMenu) {end_menu.update(time);return;}
-    }
+    void update_menus(uint32_t time);
 
     GameState get_state() {return state;}
     void set_state(GameState new_state) {state = new_state;}
@@ -191,11 +79,19 @@ public:
     void resume() {state = Running;}
 
     void prev_level() {
-        if(current_level > 0) current_level--;
+        if(current_level > 0) {
+            current_level--;
+            explode_all_dots();
+            load_level();
+        }
     }
 
     void next_level() {
-        if(current_level < max_level) current_level++;
+        if(current_level < max_level) {
+            current_level++;
+            explode_all_dots();
+            load_level();
+        }
     }
 
     void set_level(uint32_t current_level, uint32_t max_level) {
@@ -209,6 +105,15 @@ public:
 
     void add_dot(Dot dot) {
         dots.push_back(dot);
+    }
+
+    void clear_game_state() {
+        // Reset the game state to empty
+        for(auto y = 0u; y < game_grid.h; y++) {
+            for(auto x = 0u; x < game_grid.w; x++) {
+                game_state[x][y] = nullptr;
+            }
+        }
     }
 
 private:
@@ -308,7 +213,7 @@ private:
         return false;
     }
 
-    void refill_dots(uint8_t *column_counts);
+    void refill_dots(const uint8_t *column_counts);
     void explode_chain(bool refill=false);
-    void explode(blit::Point origin, blit::Pen colour, float factor=1.0f);
+    void explode(blit::Point origin, blit::Pen colour);
 };

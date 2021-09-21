@@ -14,7 +14,7 @@ Menu::Menu(std::string_view title, std::vector<Item> items, const blit::Font &fo
     footer_h = 0;
     margin_y = 0;
 
-    background_colour = blit::Pen(0x11, 0x11, 0x11);
+    background_colour = blit::Pen(0x11, 0x11, 0x11, 200);
     foreground_colour = blit::Pen(0xF7, 0xF7, 0xF7);
     selected_item_background = blit::Pen(0x22, 0x22, 0x22);
 }
