@@ -3,6 +3,6 @@
 # References can be picked up by including assets.hpp
 
 assets.cpp:
-  assets/no-image.png:
-    name: asset_no_image
-
+  assets/10x14outline_font.png:
+    name: asset_outline_font_10x14
+    type: font/image

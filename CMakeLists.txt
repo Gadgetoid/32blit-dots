@@ -6,7 +6,15 @@ include(${32BLIT_DIR}/32blit-pico/sdk_import.cmake)
 
 project(dots)
 
-set(PROJECT_SOURCE dots.cpp dots.hpp)
+set(PROJECT_SOURCE
+  src/game.cpp
+  src/main-menu.cpp
+  src/menu.cpp
+  src/random.cpp
+  src/system.cpp
+  src/gamemodes/gamemode.cpp
+  src/gamemodes/normal.cpp
+  src/gamemodes/puzzle.cpp)
 
 set(PROJECT_DISTRIBS LICENSE README.md)
 
@@ -21,6 +29,9 @@ find_package (32BLIT CONFIG REQUIRED PATHS ../32blit-sdk $ENV{PATH_32BLIT_SDK})
 blit_executable (${PROJECT_NAME} ${PROJECT_SOURCE})
 blit_assets_yaml (${PROJECT_NAME} assets.yml)
 blit_metadata (${PROJECT_NAME} metadata.yml)
+
+include_directories(${CMAKE_CURRENT_LIST_DIR}/src)
+include_directories(${CMAKE_CURRENT_LIST_DIR}/src/gamemodes)
 target_compile_definitions(${PROJECT_NAME} PRIVATE ALLOW_HIRES=1)
 add_custom_target (flash DEPENDS ${PROJECT_NAME}.flash)
 
