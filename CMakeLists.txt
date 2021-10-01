@@ -11,6 +11,7 @@ set(PROJECT_SOURCE
   src/main-menu.cpp
   src/menu.cpp
   src/random.cpp
+  src/system.cpp
   src/gamemodes/gamemode.cpp
   src/gamemodes/normal.cpp
   src/gamemodes/puzzle.cpp)

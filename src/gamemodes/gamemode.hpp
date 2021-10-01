@@ -67,6 +67,8 @@ public:
 
     void update_dots();
 
+    void clear_particles() {particles.clear();}
+
     void clear_dots() {dots.clear();}
 
     void update_input(bool refill_destroyed_dots=true);
@@ -81,7 +83,6 @@ public:
     void prev_level() {
         if(current_level > 0) {
             current_level--;
-            explode_all_dots();
             load_level();
         }
     }
@@ -89,7 +90,6 @@ public:
     void next_level() {
         if(current_level < max_level) {
             current_level++;
-            explode_all_dots();
             load_level();
         }
     }
@@ -109,8 +109,8 @@ public:
 
     void clear_game_state() {
         // Reset the game state to empty
-        for(auto y = 0u; y < game_grid.h; y++) {
-            for(auto x = 0u; x < game_grid.w; x++) {
+        for(auto y = 0; y < game_grid.h; y++) {
+            for(auto x = 0; x < game_grid.w; x++) {
                 game_state[x][y] = nullptr;
             }
         }
@@ -138,8 +138,6 @@ private:
 
     blit::Point selected;
 
-    int32_t brightness = 255;
-
     bool needs_update = false;
 
     Dot* game_state[game_grid.w][game_grid.h];
@@ -151,16 +149,6 @@ private:
             }
         }
         return nullptr;
-    }
-
-    void set_backlight(uint8_t brightness) {
-#ifdef PICO_BOARD
-        // gamma correct the provided 0-255 brightness value onto a
-        // 0-65535 range for the pwm counter
-        float gamma = 2.8;
-        uint16_t value = (uint16_t)(pow((float)(brightness) / 255.0f, gamma) * 65535.0f + 0.5f);
-        pwm_set_gpio_level(PICOSYSTEM_BACKLIGHT_PIN, value);
-#endif
     }
 
     bool grid_empty() {

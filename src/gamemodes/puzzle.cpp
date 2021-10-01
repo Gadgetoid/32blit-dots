@@ -56,12 +56,13 @@ void Puzzle::on_won() {
 }
 
 void Puzzle::on_failed() {
-    explode_all_dots();
     load_level();
     resume();
 }
 
 void Puzzle::load_level() {
+    clear_particles();
+    explode_all_dots();
     clear_dots();
     clear_game_state();
 
@@ -69,8 +70,8 @@ void Puzzle::load_level() {
 
     uint8_t *level_data = levels[level];
 
-    for(auto x = 0u; x < game_grid.w; x++) {
-        for(auto y = 0u; y < game_grid.h; y++) {
+    for(auto x = 0; x < game_grid.w; x++) {
+        for(auto y = 0; y < game_grid.h; y++) {
             int8_t color = level_data[x + y * game_grid.w];
             if(color > 0) {
                 add_dot(Dot(blit::Point(x, y - 7), color - 1));
@@ -80,7 +81,6 @@ void Puzzle::load_level() {
 }
 
 void Puzzle::restart() {
-    explode_all_dots();
     reset_score();
     load_level();
     resume();

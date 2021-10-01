@@ -4,6 +4,8 @@
 
 #include "main-menu.hpp"
 
+#include "system.hpp"
+
 using namespace blit;
 
 Game::Game() {
@@ -43,10 +45,13 @@ void init() {
     channels[2].release_ms = 20;
 
     game.change_state<MainMenu>(true);
+
+    picosystem.init();
 }
 
 void render(uint32_t time) {
     game.render();
+    picosystem.render();
 }
 
 void update(uint32_t time) {

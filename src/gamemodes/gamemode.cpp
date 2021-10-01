@@ -4,6 +4,7 @@
 #include "game.hpp"
 #include "main-menu.hpp"
 #include "colours.hpp"
+#include "system.hpp"
 
 GameMode::GameMode(Game *game, std::string_view game_mode_title, const char *change_level_text) : game(game),
     pause_menu("Paused", {
@@ -16,7 +17,7 @@ GameMode::GameMode(Game *game, std::string_view game_mode_title, const char *cha
         {Menu_Start, "Start"},
         {Menu_Change_Seed, change_level_text},
         {Menu_Change_Brightness, "Brightness"},
-        {Menu_Quit, "Mein Menu"}
+        {Menu_Quit, "Main Menu"}
     }, outline_font_10x14) {
 
     state = EndMenu;
@@ -145,7 +146,7 @@ void GameMode::render() {
                 blit::screen.rectangle(brightness_rect);
                 brightness_rect.deflate(2);
                 blit::screen.pen = colour_sky_blue;
-                brightness_rect.w *= brightness;
+                brightness_rect.w *= picosystem.get_brightness();
                 brightness_rect.w /= 255;
                 blit::screen.rectangle(brightness_rect);
                 break;
@@ -261,6 +262,9 @@ void GameMode::explode_chain(bool refill) {
 }
 
 void GameMode::load_level() {
+    clear_particles();
+    explode_all_dots();
+    clear_dots();
     uint8_t column_counts[game_grid.w];
     for(auto i = 0u; i < game_grid.w; i++) {
         column_counts[i] = game_grid.h;
@@ -270,14 +274,12 @@ void GameMode::load_level() {
 }
 
 void GameMode::restart() {
-    explode_all_dots();
     reset_score();
     load_level();
     state = Running;
 }
 
 void GameMode::quit() {
-    explode_all_dots();
     reset_score();
     load_level();
     state = EndMenu;
@@ -297,14 +299,10 @@ void GameMode::on_menu_updated(const ::Menu::Item &item) {
             break;
         case Menu_Change_Brightness:
             if (blit::buttons.pressed & blit::Button::DPAD_LEFT) {
-                brightness -= 16;
-                if(brightness < 0) brightness = 0;
-                set_backlight((uint8_t)brightness);
+                picosystem.backlight_down();
             }
             if (blit::buttons.pressed & blit::Button::DPAD_RIGHT) {
-                brightness += 16;
-                if(brightness > 255) brightness = 255;
-                set_backlight((uint8_t)brightness);
+                picosystem.backlight_up();
             }
             break;
         case Menu_Restart:
