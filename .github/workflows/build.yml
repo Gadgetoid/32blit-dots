@@ -27,42 +27,10 @@ jobs:
       matrix:
         include:
           - os: ubuntu-20.04
-            name: Linux
-            release-suffix: LIN64
-            cmake-args: -D32BLIT_DIR=$GITHUB_WORKSPACE/32blit-sdk
+            name: MiyooMiniPlus
+            release-suffix: MIYOO-MINI
+            cmake-args: -DSDL2_DIR=/usr/lib/x86_64-linux-gnu/cmake/SDL2 -D32BLIT_DIR=$GITHUB_WORKSPACE/32blit-sdk -DCMAKE_TOOLCHAIN_FILE=$GITHUB_WORKSPACE/main/miyoo-mini-plus.toolchain
             apt-packages: libsdl2-dev libsdl2-image-dev libsdl2-net-dev python3-setuptools
-
-          - os: ubuntu-20.04
-            name: STM32
-            release-suffix: STM32
-            cmake-args: -D32BLIT_DIR=$GITHUB_WORKSPACE/32blit-sdk -DCMAKE_TOOLCHAIN_FILE=$GITHUB_WORKSPACE/32blit-sdk/32blit.toolchain
-            apt-packages: gcc-arm-none-eabi libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib python3-setuptools
-
-          - os: ubuntu-20.04
-            pico-sdk: true
-            name: PicoSystem
-            cache-key: picosystem
-            release-suffix: PicoSystem
-            cmake-args: -D32BLIT_DIR=$GITHUB_WORKSPACE/32blit-sdk -DPICO_SDK_PATH=$GITHUB_WORKSPACE/pico-sdk -DPICO_BOARD=pimoroni_picosystem
-            apt-packages: gcc-arm-none-eabi libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib python3-setuptools
-
-          - os: ubuntu-20.04
-            name: Emscripten
-            release-suffix: WEB
-            cmake-args: -D32BLIT_DIR=$GITHUB_WORKSPACE/32blit-sdk
-            cmake-prefix: emcmake
-            apt-packages: python3-setuptools
-
-          - os: macos-latest
-            name: macOS
-            release-suffix: MACOS
-            cmake-args: -D32BLIT_DIR=$GITHUB_WORKSPACE/32blit-sdk
-            brew-packages: sdl2 sdl2_image sdl2_net
-
-          - os: windows-latest
-            name: Visual Studio
-            release-suffix: WIN64
-            cmake-args: -D32BLIT_DIR=$GITHUB_WORKSPACE/32blit-sdk
 
     runs-on: ${{matrix.os}}
 
@@ -139,6 +107,14 @@ jobs:
     - name: Pre-build Emscripten ports
       if: matrix.name == 'Emscripten'
       run: embuilder.py build sdl2 sdl2-image-jpg sdl2-net
+
+    - name: Fetch Miyoo Toolchain
+      if: matrix.name == 'MiyooMiniPlus'
+      working-directory: ${{runner.workspace}}
+      run: |
+        wget https://developer.arm.com/-/media/Files/downloads/gnu-a/8.3-2019.03/binrel/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf.tar.xz
+        tar -xf gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf.tar.xz
+        echo `pwd`/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf/bin > $GITHUB_PATH
 
     # Set up the cmake build environment
     - name: Create Build Environment

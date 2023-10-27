@@ -1,0 +1,7 @@
+set(COMMON_FLAGS "-Os -marm -mtune=cortex-a7 -mfpu=neon-vfpv4 -mfloat-abi=hard -march=armv7ve+simd")
+
+set(CMAKE_C_FLAGS_INIT "${COMMON_FLAGS}")
+set(CMAKE_CXX_FLAGS_INIT "${COMMON_FLAGS} -fno-exceptions")
+
+set(CMAKE_C_COMPILER arm-linux-gnueabihf-gcc)
+set(CMAKE_CXX_COMPILER arm-linux-gnueabihf-g++)
