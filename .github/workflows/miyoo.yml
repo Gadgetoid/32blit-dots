@@ -15,8 +15,6 @@ on:
 
 env:
   BUILD_TYPE: Release
-  EM_VERSION: 2.0.18 # Emscripten version
-  EM_CACHE_FOLDER: 'emsdk-cache' # Cache for Emscripten libs
 
 jobs:
 
@@ -27,42 +25,10 @@ jobs:
       matrix:
         include:
           - os: ubuntu-20.04
-            name: Linux
-            release-suffix: LIN64
-            cmake-args: -D32BLIT_DIR=$GITHUB_WORKSPACE/32blit-sdk
+            name: MiyooMiniPlus
+            release-suffix: MIYOO-MINI
+            cmake-args: -DSDL2_DIR=$GITHUB_WORKSPACE/sdl/install/lib/cmake/SDL2 -D32BLIT_DIR=$GITHUB_WORKSPACE/32blit-sdk -DCMAKE_TOOLCHAIN_FILE=$GITHUB_WORKSPACE/main/miyoo-mini-plus.toolchain
             apt-packages: libsdl2-dev libsdl2-image-dev libsdl2-net-dev python3-setuptools
-
-          - os: ubuntu-20.04
-            name: STM32
-            release-suffix: STM32
-            cmake-args: -D32BLIT_DIR=$GITHUB_WORKSPACE/32blit-sdk -DCMAKE_TOOLCHAIN_FILE=$GITHUB_WORKSPACE/32blit-sdk/32blit.toolchain
-            apt-packages: gcc-arm-none-eabi libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib python3-setuptools
-
-          - os: ubuntu-20.04
-            pico-sdk: true
-            name: PicoSystem
-            cache-key: picosystem
-            release-suffix: PicoSystem
-            cmake-args: -D32BLIT_DIR=$GITHUB_WORKSPACE/32blit-sdk -DPICO_SDK_PATH=$GITHUB_WORKSPACE/pico-sdk -DPICO_BOARD=pimoroni_picosystem
-            apt-packages: gcc-arm-none-eabi libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib python3-setuptools
-
-          - os: ubuntu-20.04
-            name: Emscripten
-            release-suffix: WEB
-            cmake-args: -D32BLIT_DIR=$GITHUB_WORKSPACE/32blit-sdk
-            cmake-prefix: emcmake
-            apt-packages: python3-setuptools
-
-          - os: macos-latest
-            name: macOS
-            release-suffix: MACOS
-            cmake-args: -D32BLIT_DIR=$GITHUB_WORKSPACE/32blit-sdk
-            brew-packages: sdl2 sdl2_image sdl2_net
-
-          - os: windows-latest
-            name: Visual Studio
-            release-suffix: WIN64
-            cmake-args: -D32BLIT_DIR=$GITHUB_WORKSPACE/32blit-sdk
 
     runs-on: ${{matrix.os}}
 
@@ -83,62 +49,32 @@ jobs:
         repository: 32blit/32blit-sdk
         path: 32blit-sdk
 
-    # pico sdk/extras for some builds
-    - name: Checkout Pico SDK
-      if: matrix.pico-sdk
-      uses: actions/checkout@v2
-      with:
-        repository: raspberrypi/pico-sdk
-        path: pico-sdk
-        submodules: true
-
-    - name: Checkout Pico Extras
-      if: matrix.pico-sdk
-      uses: actions/checkout@v2
-      with:
-        repository: raspberrypi/pico-extras
-        path: pico-extras
-
     # Linux dependencies
     - name: Install Linux deps
-      if: runner.os == 'Linux'
       run: |
         sudo apt update && sudo apt install ${{matrix.apt-packages}}
         pip3 install 32blit
 
-    # MacOS dependencies
-    - name: Install macOS deps
-      if: runner.os == 'macOS'
+    - name: Fetch Miyoo Toolchain
+      working-directory: ${{runner.workspace}}
       run: |
-        brew install ${{matrix.brew-packages}}
-        python3 -m pip install 32blit
+        wget https://developer.arm.com/-/media/Files/downloads/gnu-a/8.3-2019.03/binrel/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf.tar.xz
+        tar -xf gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf.tar.xz
+        echo `pwd`/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf/bin > $GITHUB_PATH
 
-    # Windows dependencies
-    - name: Install Windows deps
-      if: runner.os == 'Windows'
+    - name: Checkout SDL Source
+      uses: actions/checkout@v2
+      with:
+        repository: gadgetoid/steward-fu-sdl
+        ref: mmiyoo/joystick
+        path: sdl
+
+    - name: Build SDL
       shell: bash
+      working-directory: ${{runner.workspace}}/32blit-dots/sdl
       run: |
-        python -m pip install 32blit
-
-    # Emscripten SDK setup
-    - name: Setup Emscripten cache
-      if: matrix.name == 'Emscripten'
-      id: cache-system-libraries
-      uses: actions/cache@v2
-      with:
-        path: ${{env.EM_CACHE_FOLDER}}
-        key: ${{env.EM_VERSION}}-${{runner.os}}
-
-    - name: Setup Emscripten
-      if: matrix.name == 'Emscripten'
-      uses: mymindstorm/setup-emsdk@v7
-      with:
-        version: ${{env.EM_VERSION}}
-        actions-cache-folder: ${{env.EM_CACHE_FOLDER}}
-
-    - name: Pre-build Emscripten ports
-      if: matrix.name == 'Emscripten'
-      run: embuilder.py build sdl2 sdl2-image-jpg sdl2-net
+        export CROSS_COMPILE=arm-linux-gnueabihf-
+        ./ci/build.sh
 
     # Set up the cmake build environment
     - name: Create Build Environment
